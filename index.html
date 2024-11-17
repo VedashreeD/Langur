@@ -38,7 +38,7 @@
             margin-bottom: 20px;
         }
 
-        .btn, #captureBtn {
+        .btn {
             padding: 12px 20px;
             margin: 10px 0;
             background-color: #4CAF50;
@@ -49,26 +49,19 @@
             transition: background-color 0.3s ease;
         }
 
-        .btn:hover, #captureBtn:hover {
+        .btn:hover {
             background-color: #45a049;
         }
 
-        #videoElement {
-            width: 100%;
-            height: auto;
-            max-width: 100%;
+        input[type="file"] {
             margin-top: 20px;
+            margin-bottom: 20px;
         }
 
         #result {
             margin-top: 20px;
             font-size: 18px;
             color: #333;
-        }
-
-        input[type="file"] {
-            margin-top: 20px;
-            margin-bottom: 20px;
         }
 
         @media (max-width: 600px) {
@@ -90,9 +83,6 @@
 
         <input type="file" id="uploadImage" class="btn" />
 
-        <video id="videoElement" autoplay></video>
-        <button id="captureBtn" class="btn">Capture Image</button>
-
         <div id="result"></div>
     </div>
 
@@ -104,71 +94,65 @@
 
             document.getElementById('result').innerText = 'Processing image...';
 
-            fetch('/upload_image', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.translated_text) {
-                    document.getElementById('result').innerText = 'Translated Text: ' + data.translated_text;
-                } else if (data.error) {
-                    document.getElementById('result').innerText = 'Error: ' + data.error;
-                } else {
-                    document.getElementById('result').innerText = 'Unable to detect text in image.';
+            // Read and process the image in the frontend (grayscale and thresholding)
+            let reader = new FileReader();
+            reader.onload = function(e) {
+                let img = new Image();
+                img.onload = function() {
+                    let canvas = document.createElement('canvas');
+                    let context = canvas.getContext('2d');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+
+                    // Draw image on canvas to process
+                    context.drawImage(img, 0, 0);
+
+                    // Convert image to grayscale
+                    let imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                    let data = imageData.data;
+                    for (let i = 0; i < data.length; i += 4) {
+                        let avg = (data[i] + data[i + 1] + data[i + 2]) / 3; // Convert to grayscale
+                        data[i] = data[i + 1] = data[i + 2] = avg;  // Set red, green, blue to the average value
+                    }
+                    context.putImageData(imageData, 0, 0);
+
+                    // Apply binary thresholding (for better text extraction)
+                    let threshold = 128;
+                    for (let i = 0; i < data.length; i += 4) {
+                        let brightness = data[i]; // Use red channel as grayscale value
+                        let color = brightness > threshold ? 255 : 0;
+                        data[i] = data[i + 1] = data[i + 2] = color; // Set to black or white
+                    }
+                    context.putImageData(imageData, 0, 0);
+
+                    // Send the processed image data to the backend
+                    canvas.toBlob(function(blob) {
+                        let formData = new FormData();
+                        formData.append("file", blob);
+                        fetch('/upload_image', {
+                            method: 'POST',
+                            body: formData
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.translated_text) {
+                                document.getElementById('result').innerText = 'Translated Text: ' + data.translated_text;
+                            } else if (data.error) {
+                                document.getElementById('result').innerText = 'Error: ' + data.error;
+                            } else {
+                                document.getElementById('result').innerText = 'Unable to detect text in image.';
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            document.getElementById('result').innerText = 'Something went wrong! Try again.';
+                        });
+                    }, 'image/png');
                 }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                document.getElementById('result').innerText = 'Something went wrong! Try again.';
-            });
+                img.src = e.target.result;
+            }
+            reader.readAsDataURL(file);
         });
-
-        const videoElement = document.getElementById('videoElement');
-        const captureBtn = document.getElementById('captureBtn');
-
-        navigator.mediaDevices.getUserMedia({ video: true })
-            .then(stream => {
-                videoElement.srcObject = stream;
-            })
-            .catch(err => {
-                console.log("Error accessing webcam:", err);
-            });
-
-        captureBtn.addEventListener('click', function() {
-            let canvas = document.createElement('canvas');
-            let context = canvas.getContext('2d');
-            canvas.width = videoElement.videoWidth;
-            canvas.height = videoElement.videoHeight;
-            context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-
-            document.getElementById('result').innerText = 'Processing image...';
-
-            let imageData = canvas.toDataURL('image/png');
-
-            fetch('/capture_image', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ image_data: imageData })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.translated_text) {
-                    document.getElementById('result').innerText = 'Translated Text: ' + data.translated_text;
-                } else if (data.error) {
-                    document.getElementById('result').innerText = 'Error: ' + data.error;
-                } else {
-                    document.getElementById('result').innerText = 'No text found in image.';
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                document.getElementById('result').innerText = 'An error occurred while processing the image.';
-            });
-        });
-
     </script>
 
 </body>
