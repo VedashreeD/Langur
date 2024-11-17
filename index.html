@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Translator</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            height: 100%;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            background-color: #FFDAB9;  /* peach background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: #333;
+            flex-direction: column;
+        }
+
+        .container {
+            text-align: center;
+            background-color: white;
+            border-radius: 8px;
+            padding: 30px;
+            width: 80%;
+            max-width: 500px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #4CAF50; /* green color heading */
+            margin-bottom: 20px;
+        }
+
+        .btn, #captureBtn {
+            padding: 12px 20px;
+            margin: 10px 0;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .btn:hover, #captureBtn:hover {
+            background-color: #45a049;
+        }
+
+        #videoElement {
+            width: 100%;
+            height: auto;
+            max-width: 100%;
+            margin-top: 20px;
+        }
+
+        #result {
+            margin-top: 20px;
+            font-size: 18px;
+            color: #333;
+        }
+
+        input[type="file"] {
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                width: 90%;
+                padding: 15px;
+            }
+
+            h1 {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Image Translator</h1>
+
+        <input type="file" id="uploadImage" class="btn" />
+
+        <video id="videoElement" autoplay></video>
+        <button id="captureBtn" class="btn">Capture Image</button>
+
+        <div id="result"></div>
+    </div>
+
+    <script>
+        document.getElementById('uploadImage').addEventListener('change', function(event) {
+            let file = event.target.files[0];
+            let formData = new FormData();
+            formData.append('file', file);
+
+            document.getElementById('result').innerText = 'Processing image...';
+
+            fetch('/upload_image', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.translated_text) {
+                    document.getElementById('result').innerText = 'Translated Text: ' + data.translated_text;
+                } else if (data.error) {
+                    document.getElementById('result').innerText = 'Error: ' + data.error;
+                } else {
+                    document.getElementById('result').innerText = 'Unable to detect text in image.';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('result').innerText = 'Something went wrong! Try again.';
+            });
+        });
+
+        const videoElement = document.getElementById('videoElement');
+        const captureBtn = document.getElementById('captureBtn');
+
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                videoElement.srcObject = stream;
+            })
+            .catch(err => {
+                console.log("Error accessing webcam:", err);
+            });
+
+        captureBtn.addEventListener('click', function() {
+            let canvas = document.createElement('canvas');
+            let context = canvas.getContext('2d');
+            canvas.width = videoElement.videoWidth;
+            canvas.height = videoElement.videoHeight;
+            context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+
+            document.getElementById('result').innerText = 'Processing image...';
+
+            let imageData = canvas.toDataURL('image/png');
+
+            fetch('/capture_image', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ image_data: imageData })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.translated_text) {
+                    document.getElementById('result').innerText = 'Translated Text: ' + data.translated_text;
+                } else if (data.error) {
+                    document.getElementById('result').innerText = 'Error: ' + data.error;
+                } else {
+                    document.getElementById('result').innerText = 'No text found in image.';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('result').innerText = 'An error occurred while processing the image.';
+            });
+        });
+
+    </script>
+
+</body>
+</html>
+
